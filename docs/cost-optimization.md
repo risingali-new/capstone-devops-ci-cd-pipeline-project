@@ -9,7 +9,7 @@ This project targets a **dev/demo** budget, not production HA. Choices below kee
 | NAT gateway | **Single** NAT in one AZ | NAT per AZ for HA |
 | EKS nodes | `t3.medium`, 1–3 nodes (desired 2) | Larger types, more nodes |
 | Jenkins | One `t3.medium` EC2 (Sprint 1) | Managed CI (CodePipeline, etc.) |
-| LoadBalancers | App + Grafana LB (demo access) | Ingress + single ALB |
+| LoadBalancers | App LB only; Grafana is ClusterIP (port-forward) | Ingress + single ALB |
 | State | S3 + DynamoDB lock (minimal objects) | Same pattern, often shared bucket |
 | Pipeline | Full Terraform on every run | Separate infra job on schedule |
 
@@ -30,10 +30,20 @@ See also [terraform.md](terraform.md#estimated-monthly-cost-if-left-running-cont
 
 EKS control plane bills **24/7** until destroyed — there is no “stop cluster” option.
 
+**Order matters.** Kubernetes creates the app's load balancer (and a `k8s-elb-*` security group) outside Terraform.
+If they still exist, `terraform destroy` cannot delete the subnets and VPC, and the orphan keeps billing.
+
 ```bash
+kubectl get svc -A | grep LoadBalancer          # list every load balancer Service
+kubectl delete svc capstone-app -n capstone-app # releases the ELB
+sleep 90
+aws elb describe-load-balancers --region ap-south-1 --query "LoadBalancerDescriptions[].LoadBalancerName"   # expect []
+
 cd terraform
 terraform destroy   # removes VPC, EKS, nodes (Jenkins EC2 is manual unless imported)
 ```
+
+Then verify nothing is left running: `aws eks list-clusters`, NAT gateways, unattached Elastic IPs and `available` EBS volumes.
 
 - **Stop Jenkins EC2** when not demoing (saves compute; EBS still billed).
 - **Keep ECR images** — storage is cheap; speeds rebuilds.

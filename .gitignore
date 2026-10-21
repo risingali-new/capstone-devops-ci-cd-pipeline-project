@@ -223,3 +223,6 @@ __pycache__/
 terraform.tfvars
 .terraform/
 *.tfstate*
+
+# macOS
+.DS_Store

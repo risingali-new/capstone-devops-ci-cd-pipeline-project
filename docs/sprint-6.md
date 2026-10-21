@@ -36,6 +36,7 @@
 ## Known limitations
 
 - Jenkins EC2 not managed by Terraform (Sprint 1 bootstrap) — see [terraform.md](terraform.md#out-of-scope-in-terraform-documented-for-taskmd).
-- Grafana admin password is hard-coded for demo (`monitoring/grafana.yaml`).
-- Slack alerts require `SLACK_WEBHOOK_URL` on the Jenkins job (documented in [monitoring.md](monitoring.md)).
+- Grafana admin password is hard-coded for demo (`monitoring/grafana.yaml`); Grafana is `ClusterIP`, reachable only through `kubectl port-forward`.
+- Slack alerts need the Jenkins credential `slack-webhook-url` (Secret text); without it the step is skipped (documented in [monitoring.md](monitoring.md)).
+- `pollSCM` rebuilds on every new commit and the pipeline runs `terraform apply`, so **disable the Jenkins job while the cluster is destroyed** or a poll will recreate it.
 - Submission PNGs: add under [screenshots/README.md](screenshots/README.md).

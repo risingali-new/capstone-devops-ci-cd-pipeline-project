@@ -87,7 +87,43 @@ docs/          # Runbooks, sprint logs, task requirements
 | 5 | Prometheus, Grafana, alerts | [monitoring.md](docs/monitoring.md) |
 | 6 | E2E tests, cost doc, demo script | [sprint-6.md](docs/sprint-6.md) |
 
-Evidence screenshots: add PNGs per [docs/screenshots/README.md](docs/screenshots/README.md).
+## Evidence screenshots
+
+### Sprint 1 — Docker, ECR, Jenkins
+![Jenkins dashboard](docs/screenshots/sprint1-jenkins-dashboard.png)
+![Jenkins console output](docs/screenshots/sprint1-jenkins-console.png)
+![ECR repository](docs/screenshots/sprint1-ecr-repo.png)
+![Jenkins EC2 instance](docs/screenshots/sprint1-ec2-instance.png)
+
+### Sprint 2 — Terraform (VPC + EKS)
+![kubectl get nodes](docs/screenshots/sprint2-kubectl-nodes.png)
+![EKS cluster](docs/screenshots/sprint2-eks-cluster.png)
+![VPC](docs/screenshots/sprint2-vpc.png)
+![terraform apply](docs/screenshots/sprint2-terraform-apply.png)
+![Jenkins pipeline with Terraform stages](docs/screenshots/sprint2-jenkins-terraform-pipeline.png)
+
+### Sprint 3 — Ansible
+![Ansible play recap in Jenkins](docs/screenshots/sprint3-ansible-console.png)
+![Tooling on the Jenkins host](docs/screenshots/sprint3-jenkins-host-tools.png)
+![Sprint 3 PR merged](docs/screenshots/sprint3-pr-merged.png)
+
+### Sprint 4 — Deploy to EKS
+![Pods running](docs/screenshots/sprint4-pods-running.png)
+![HPA with live CPU metrics](docs/screenshots/sprint4-hpa-metrics.png)
+![App reachable through the load balancer](docs/screenshots/sprint4-app-live.png)
+![Jenkins Deploy and smoke test](docs/screenshots/sprint4-jenkins-deploy.png)
+
+### Sprint 5 — Monitoring and alerting
+![Prometheus targets](docs/screenshots/sprint5-prometheus-targets.png)
+![Grafana dashboard](docs/screenshots/sprint5-grafana-dashboard.png)
+![CapstoneAppDown alert firing](docs/screenshots/sprint5-alert-firing.png)
+![Jenkins Monitoring stage](docs/screenshots/sprint5-jenkins-monitoring.png)
+![Slack failure notification](docs/screenshots/sprint5-slack-alert.png)
+
+### Sprint 6 — Full pipeline
+![Complete pipeline run](docs/screenshots/sprint6-final-pipeline.png)
+
+Checklist of expected files: [docs/screenshots/README.md](docs/screenshots/README.md).
 
 ---
 
@@ -114,7 +150,7 @@ pytest -q
 
 Push to `main` (or run job manually). Confirm all stages complete through **Pipeline validation**.
 
-Optional failure alert: set job env `SLACK_WEBHOOK_URL` — [monitoring.md](docs/monitoring.md).
+Failure alert: Jenkins credential `slack-webhook-url` (Secret text) — [monitoring.md](docs/monitoring.md).
 
 ### 3. Infrastructure
 
@@ -141,10 +177,11 @@ Rollback: [pipeline.md](docs/pipeline.md).
 
 ```bash
 kubectl get pods -n monitoring
-kubectl get svc grafana -n monitoring
+kubectl port-forward svc/grafana -n monitoring 3000:80      # http://localhost:3000
+kubectl port-forward svc/prometheus -n monitoring 9090:9090  # http://localhost:9090/targets
 ```
 
-Grafana (dev): `admin` / `capstone-dev` — dashboard **Capstone — App & Cluster**.  
+Grafana (dev, port-forward only): `admin` / `capstone-dev` — dashboard **Capstone — App & Cluster**.  
 Prometheus targets should include app pods, kube-state-metrics, and node-exporter.
 
 Full checklist: [e2e-testing.md](docs/e2e-testing.md).

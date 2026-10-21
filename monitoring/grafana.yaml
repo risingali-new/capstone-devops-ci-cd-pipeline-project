@@ -82,7 +82,9 @@ metadata:
   labels:
     app: grafana
 spec:
-  type: LoadBalancer
+  # ClusterIP on purpose: Grafana is reached with `kubectl port-forward`, not a public
+  # load balancer (the dev password is in this repo, and an extra ELB blocks terraform destroy).
+  type: ClusterIP
   selector:
     app: grafana
   ports:

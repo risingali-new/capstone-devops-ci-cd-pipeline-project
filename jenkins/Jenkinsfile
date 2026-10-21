@@ -142,9 +142,18 @@ pipeline {
                     fi
 
                     echo "Service reachable at http://${SERVICE_HOST}"
-                    # ELB DNS propagation can lag even after the hostname appears
+                    # A brand-new ELB's DNS name can take a few minutes to resolve
+                    # (curl exit code 6), so retry instead of one curl after a fixed sleep.
                     sleep 30
-                    curl -sf --max-time 10 "http://${SERVICE_HOST}/health"
+                    for i in $(seq 1 12); do
+                        if curl -sf --max-time 10 "http://${SERVICE_HOST}/health"; then
+                            exit 0
+                        fi
+                        echo "Not reachable yet, retrying... ($i/12)"
+                        sleep 15
+                    done
+                    echo "Smoke test failed: ${SERVICE_HOST} never became reachable"
+                    exit 1
                 '''
             }
         }
@@ -196,14 +205,16 @@ pipeline {
         failure {
             echo "Pipeline failed — check stage logs, kubectl get pods -A, and Grafana/Prometheus in monitoring namespace"
             script {
-                if (env.SLACK_WEBHOOK_URL?.trim()) {
-                    sh '''
-                        curl -sf -X POST -H "Content-type: application/json" \
-                          --data "{\"text\":\"Capstone pipeline FAILED: ${JOB_NAME} #${BUILD_NUMBER} — ${BUILD_URL}\"}" \
-                          "$SLACK_WEBHOOK_URL" || true
-                    '''
-                } else {
-                    echo 'Optional: set Jenkins job environment SLACK_WEBHOOK_URL for Slack alerts (see docs/monitoring.md)'
+                try {
+                    withCredentials([string(credentialsId: 'slack-webhook-url', variable: 'SLACK_WEBHOOK_URL')]) {
+                        sh '''
+                            PAYLOAD=$(printf '{"text":"Capstone pipeline FAILED: %s #%s - %s"}' "$JOB_NAME" "$BUILD_NUMBER" "$BUILD_URL")
+                            curl -s -o /dev/null -w "Slack HTTP status: %{http_code}\\n" -X POST \
+                              -H "Content-type: application/json" --data "$PAYLOAD" "$SLACK_WEBHOOK_URL" || true
+                        '''
+                    }
+                } catch (err) {
+                    echo "Slack notification skipped: ${err.message} (create the Jenkins credential 'slack-webhook-url' to enable it)"
                 }
             }
         }
