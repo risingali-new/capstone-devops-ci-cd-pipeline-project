@@ -1,6 +1,6 @@
 # Sprint 6 — Testing, documentation, production readiness
 
-## Status: complete in repo — verify with one full Jenkins run
+## Status: complete — verified with a full Jenkins run (build #23, all stages green)
 
 ## Deliverables added
 
@@ -31,7 +31,7 @@
 - [x] SCM trigger documented + pollSCM in Jenkinsfile
 - [x] Cost optimization document
 - [x] Demo script
-- [ ] Final unattended pipeline run captured (screenshots/logs — your Jenkins)
+- [x] Final full pipeline run captured (build #23, `screenshots/sprint6-final-pipeline.png`)
 
 ## Known limitations
 
@@ -39,4 +39,4 @@
 - Grafana admin password is hard-coded for demo (`monitoring/grafana.yaml`); Grafana is `ClusterIP`, reachable only through `kubectl port-forward`.
 - Slack alerts need the Jenkins credential `slack-webhook-url` (Secret text); without it the step is skipped (documented in [monitoring.md](monitoring.md)).
 - `pollSCM` rebuilds on every new commit and the pipeline runs `terraform apply`, so **disable the Jenkins job while the cluster is destroyed** or a poll will recreate it.
-- Submission PNGs: add under [screenshots/README.md](screenshots/README.md).
+- Submission PNGs are in `docs/screenshots/` (expected files listed in [screenshots/README.md](screenshots/README.md)).

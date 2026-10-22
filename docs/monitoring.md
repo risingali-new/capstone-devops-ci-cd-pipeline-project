@@ -67,11 +67,11 @@ and the same `post { failure { ... } }` block, build it once, and check the Slac
 
 ## Definition of done
 
-- [ ] `kubectl get pods -n monitoring` — prometheus, grafana, kube-state-metrics Running; node-exporter on each node
-- [ ] Prometheus targets: app + kube-state-metrics + node-exporter **UP**
-- [ ] Grafana dashboard **Capstone — App & Cluster** visible
-- [ ] Test alert `CapstoneAppDown` once (scale to 0)
-- [ ] Slack failure message received (credential `slack-webhook-url`)
+- [x] `kubectl get pods -n monitoring` — prometheus, grafana, kube-state-metrics Running; node-exporter on each node
+- [x] Prometheus targets: app + kube-state-metrics + node-exporter **UP**
+- [x] Grafana dashboard **Capstone — App & Cluster** visible
+- [x] Test alert `CapstoneAppDown` once (annotate one pod's scrape port to 9999; fired after ~3 min)
+- [x] Slack failure message received (credential `slack-webhook-url`)
 
 ## Next: Sprint 6
 

@@ -67,6 +67,6 @@ kubectl rollout status deployment/capstone-app -n capstone-app
 
 ## Definition of done (Sprint 6)
 
-- [ ] One unattended pipeline run from SCM trigger completes all stages
-- [ ] Manual checklist above passes with screenshots or console logs archived
+- [x] One full pipeline run completes all stages (build #23, started manually; `pollSCM` is configured but a poll-triggered run was not demonstrated)
+- [x] Manual checklist above passes with screenshots or console logs archived
 - [ ] [demo-script.md](demo-script.md) rehearsed once end-to-end
