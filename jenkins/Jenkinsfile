@@ -1,10 +1,12 @@
-// Sprint 4: adds the Deploy stage — updates kubeconfig, installs metrics-server
-// (required for HPA, not included by default on EKS), applies manifests with
-// the just-built image tag, waits for rollout, and smoke-tests the endpoint.
-// Sprint 5 will add monitoring; this is the last stage before that.
+// Capstone stages: Build | Infra (Terraform) | Config (Ansible) | Deploy | Test & Monitor
+// Sprint 6: pollSCM trigger, Pipeline validation stage, docs in docs/sprint-6.md
 
 pipeline {
     agent any
+
+    triggers {
+        pollSCM('H/15 * * * *')
+    }
 
     environment {
         AWS_REGION   = 'ap-south-1'
@@ -24,6 +26,7 @@ pipeline {
             steps {
                 dir('terraform') {
                     sh 'terraform init -input=false'
+                    sh 'terraform validate'
                 }
             }
         }
@@ -139,9 +142,57 @@ pipeline {
                     fi
 
                     echo "Service reachable at http://${SERVICE_HOST}"
-                    # ELB DNS propagation can lag even after the hostname appears
+                    # A brand-new ELB's DNS name can take a few minutes to resolve
+                    # (curl exit code 6), so retry instead of one curl after a fixed sleep.
                     sleep 30
-                    curl -sf --max-time 10 "http://${SERVICE_HOST}/health"
+                    for i in $(seq 1 12); do
+                        if curl -sf --max-time 10 "http://${SERVICE_HOST}/health"; then
+                            exit 0
+                        fi
+                        echo "Not reachable yet, retrying... ($i/12)"
+                        sleep 15
+                    done
+                    echo "Smoke test failed: ${SERVICE_HOST} never became reachable"
+                    exit 1
+                '''
+            }
+        }
+
+        stage('Monitoring') {
+            steps {
+                dir('monitoring') {
+                    sh '''
+                        kubectl apply -f namespace.yaml
+                        kubectl apply -f kube-state-metrics.yaml
+                        kubectl apply -f node-exporter.yaml
+                        kubectl apply -f prometheus-rbac.yaml
+                        kubectl apply -f prometheus-config.yaml
+                        kubectl apply -f prometheus.yaml
+                        kubectl apply -f grafana-dashboards.yaml
+                        kubectl apply -f grafana.yaml
+                        kubectl rollout status deployment/kube-state-metrics -n monitoring --timeout=120s
+                        kubectl rollout status deployment/prometheus -n monitoring --timeout=120s
+                        kubectl rollout status deployment/grafana -n monitoring --timeout=120s
+                    '''
+                }
+            }
+        }
+
+        stage('Pipeline validation') {
+            steps {
+                sh '''
+                    echo "=== capstone-app ==="
+                    kubectl get deploy,svc,hpa -n capstone-app
+                    kubectl wait --for=condition=available deployment/capstone-app \
+                        -n capstone-app --timeout=60s
+
+                    echo "=== monitoring ==="
+                    kubectl get deploy,pods -n monitoring
+
+                    APP_HOST=$(kubectl get svc capstone-app -n capstone-app \
+                        -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                    curl -sf --max-time 10 "http://${APP_HOST}/health"
+                    curl -sf --max-time 10 "http://${APP_HOST}/metrics" | grep -q app_requests_total
                 '''
             }
         }
@@ -149,10 +200,23 @@ pipeline {
 
     post {
         success {
-            echo "Deployed ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG} to EKS"
+            echo "Deployed ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG} to EKS (monitoring stack applied)"
         }
         failure {
-            echo "Build failed — check the stage logs above."
+            echo "Pipeline failed — check stage logs, kubectl get pods -A, and Grafana/Prometheus in monitoring namespace"
+            script {
+                try {
+                    withCredentials([string(credentialsId: 'slack-webhook-url', variable: 'SLACK_WEBHOOK_URL')]) {
+                        sh '''
+                            PAYLOAD=$(printf '{"text":"Capstone pipeline FAILED: %s #%s - %s"}' "$JOB_NAME" "$BUILD_NUMBER" "$BUILD_URL")
+                            curl -s -o /dev/null -w "Slack HTTP status: %{http_code}\\n" -X POST \
+                              -H "Content-type: application/json" --data "$PAYLOAD" "$SLACK_WEBHOOK_URL" || true
+                        '''
+                    }
+                } catch (err) {
+                    echo "Slack notification skipped: ${err.message} (create the Jenkins credential 'slack-webhook-url' to enable it)"
+                }
+            }
         }
     }
 }

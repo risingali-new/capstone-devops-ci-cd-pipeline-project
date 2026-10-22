@@ -1,147 +1,239 @@
-# End-to-End DevOps CI/CD Capstone
+# Project 4 — End-to-End DevOps CI/CD Capstone
 
-A hands-on capstone building a complete CI/CD pipeline on AWS: containerized app →
-Jenkins → Terraform-provisioned EKS → Kubernetes deployment → Prometheus/Grafana
-monitoring, all driven from a single Jenkins pipeline.
+Automated pipeline for a Dockerized web app on **AWS EKS**, orchestrated by **Jenkins**: infrastructure (Terraform), configuration (Ansible), deployment (Kubernetes), and observability (Prometheus/Grafana).
 
-**Status:** Sprint 3 in progress (Ansible playbooks added; pending Jenkins pipeline verification). See [Progress](#progress) below.
+| Evaluation (per [docs/task.md](docs/task.md)) | Weight |
+|-----------------------------------------------|--------|
+| Implementation | 75% |
+| Documentation | 15% |
+| Cost optimization | 10% |
+
+**Region:** `ap-south-1` · **Requirements:** [docs/task.md](docs/task.md)
+
+---
 
 ## Architecture
 
 ```
 Developer --push--> GitHub --webhook/poll--> Jenkins (EC2)
                                                  |
-                          -----------------------+-----------------------
-                          |            |            |            |
-                     Docker build   Terraform    Ansible      kubectl
-                          |          (VPC/EKS/     (host       apply
-                          v           IAM/S3)      config)        |
-                        ECR                                       v
-                          |                                 EKS Cluster
-                          +------------------image pull---------->|
-                                                                   |
-                                                        App Deployment + Service
-                                                        HPA (CPU-based, 2-5 pods)
-                                                        Prometheus + Grafana
+        ------------------------------------------------------------------
+        |              |              |              |                 |
+   Test/Build/ECR   Terraform      Ansible        Deploy          Monitoring
+        |          (VPC/EKS/S3)    (host cfg)    (kubectl)      (Prom/Grafana)
+        v                                                            |
+      ECR ----------------------------------------------------> EKS pods
 ```
 
-Full details in [docs/architecture.md](docs/architecture.md).
+Network, IAM, and components: [docs/architecture.md](docs/architecture.md).
 
-## Tech stack
+---
 
-| Layer | Tool |
-|---|---|
-| App | Python (Flask) |
-| Containerization | Docker (multi-stage build) |
-| CI/CD | Jenkins (self-hosted on EC2) |
-| Image registry | Amazon ECR |
-| Infrastructure as Code | Terraform |
-| Compute | Amazon EKS (Kubernetes) |
-| Config management | Ansible *(Sprint 3)* |
-| Monitoring | Prometheus + Grafana *(Sprint 5)* |
-| Cloud | AWS (`ap-south-1`) |
+## Project goals (task mapping)
+
+| Goal | Delivery | Documentation |
+|------|----------|---------------|
+| Architecture (LB, orchestration, monitoring) | VPC, EKS, LoadBalancer Service, Prometheus/Grafana | [architecture.md](docs/architecture.md) |
+| Terraform (VPC, subnets, EKS, S3 state) | `terraform/` + Jenkins Terraform stages | [terraform.md](docs/terraform.md) |
+| Ansible configuration | `ansible/` runs after Terraform | [ansible.md](docs/ansible.md) |
+| App on EKS (scale, resilience) | `kubernetes/` — probes, HPA | [kubernetes.md](docs/kubernetes.md) |
+| Jenkins CI/CD | [jenkins/Jenkinsfile](jenkins/Jenkinsfile) | [pipeline.md](docs/pipeline.md) |
+| Prometheus & Grafana | `monitoring/` — app + node metrics | [monitoring.md](docs/monitoring.md) |
+
+---
+
+## Jenkins pipeline
+
+Single declarative pipeline: [jenkins/Jenkinsfile](jenkins/Jenkinsfile).
+
+| Capstone stage ([task.md](docs/task.md)) | Jenkins stages |
+|------------------------------------------|----------------|
+| **1. Build** | Test → Build image → Push to ECR |
+| **2. Infrastructure** | Terraform Init → Plan → Apply (includes `terraform validate`) |
+| **3. Configuration** | Ansible Configure |
+| **4. Deployment** | Deploy → Post-deploy smoke test |
+| **5. Test & monitor** | Monitoring → Pipeline validation |
+
+**Trigger:** Git push or SCM poll every 15 minutes — [jenkins-triggers.md](docs/jenkins-triggers.md).
+
+```
+Checkout → Terraform → Ansible → Test → Build → ECR → Deploy → Smoke → Monitoring → Validation
+```
+
+---
 
 ## Repository layout
 
 ```
-app/          # Flask app, Dockerfile, tests
-terraform/    # VPC, EKS, IAM, remote state backend
-ansible/      # Host configuration playbooks (Sprint 3)
-jenkins/      # Jenkinsfile
-kubernetes/   # Deployment manifests (Sprint 4)
-monitoring/   # Prometheus/Grafana manifests (Sprint 5)
-docs/         # Architecture, sprint logs, screenshots
+app/           # Flask app, Dockerfile, pytest
+terraform/     # VPC, EKS, S3 backend, IAM
+ansible/       # Playbooks (Jenkins CI host)
+jenkins/       # Jenkinsfile
+kubernetes/    # Deployment, Service, HPA
+monitoring/    # Prometheus, Grafana, kube-state-metrics, node-exporter
+docs/          # Runbooks, sprint logs, task requirements
 ```
 
-## Progress
+---
 
-### ✅ Sprint 1 — Docker, ECR, Jenkins foundation
+## Sprint summary
 
-Containerized the app, set up Jenkins on EC2 with an IAM instance profile (no
-stored AWS credentials), and got a pipeline building and pushing to ECR on every
-commit.
+| Sprint | Topic | Log |
+|--------|--------|-----|
+| 1 | Docker, ECR, Jenkins on EC2 | [sprint-1.md](docs/sprint-1.md) |
+| 2 | Terraform + remote state + Jenkins | [terraform.md](docs/terraform.md) |
+| 3 | Ansible after Terraform | [ansible.md](docs/ansible.md) |
+| 4 | Deploy to EKS (LB, HPA, smoke test) | [pipeline.md](docs/pipeline.md) |
+| 5 | Prometheus, Grafana, alerts | [monitoring.md](docs/monitoring.md) |
+| 6 | E2E tests, cost doc, demo script | [sprint-6.md](docs/sprint-6.md) |
 
-| | |
-|---|---|
-| Jenkins dashboard | ![Jenkins dashboard](docs/screenshots/sprint1-jenkins-dashboard.png) |
-| Successful pipeline run | ![Jenkins console output](docs/screenshots/sprint1-jenkins-console.png) |
-| ECR repository with pushed images | ![ECR repository](docs/screenshots/sprint1-ecr-repo.png) |
-| Jenkins EC2 instance | ![EC2 instance](docs/screenshots/sprint1-ec2-instance.png) |
+## Evidence screenshots
 
-Full log: [docs/sprint-1.md](docs/sprint-1.md)
+### Sprint 1 — Docker, ECR, Jenkins
+![Jenkins dashboard](docs/screenshots/sprint1-jenkins-dashboard.png)
+![Jenkins console output](docs/screenshots/sprint1-jenkins-console.png)
+![ECR repository](docs/screenshots/sprint1-ecr-repo.png)
+![Jenkins EC2 instance](docs/screenshots/sprint1-ec2-instance.png)
 
-### ✅ Sprint 2 — Terraform infrastructure + Jenkins integration
+### Sprint 2 — Terraform (VPC + EKS)
+![kubectl get nodes](docs/screenshots/sprint2-kubectl-nodes.png)
+![EKS cluster](docs/screenshots/sprint2-eks-cluster.png)
+![VPC](docs/screenshots/sprint2-vpc.png)
+![terraform apply](docs/screenshots/sprint2-terraform-apply.png)
+![Jenkins pipeline with Terraform stages](docs/screenshots/sprint2-jenkins-terraform-pipeline.png)
 
-Provisioned a VPC and EKS cluster entirely through Terraform, with remote state in
-S3 + DynamoDB, then wired `terraform init/plan/apply` into the Jenkins pipeline
-itself — so infrastructure changes are driven by the same pipeline as app changes.
+### Sprint 3 — Ansible
+![Ansible play recap in Jenkins](docs/screenshots/sprint3-ansible-console.png)
+![Tooling on the Jenkins host](docs/screenshots/sprint3-jenkins-host-tools.png)
+![Sprint 3 PR merged](docs/screenshots/sprint3-pr-merged.png)
 
-| | |
-|---|---|
-| `kubectl get nodes` — healthy cluster | ![kubectl get nodes](docs/screenshots/sprint2-kubectl-nodes.png) |
-| EKS cluster (AWS Console) | ![EKS cluster](docs/screenshots/sprint2-eks-cluster.png) |
-| VPC (AWS Console) | ![VPC](docs/screenshots/sprint2-vpc.png) |
-| `terraform apply` — 22 resources created | ![Terraform apply output](docs/screenshots/sprint2-terraform-apply.png) |
-| Jenkins pipeline with Terraform stages | ![Jenkins Terraform pipeline](docs/screenshots/sprint2-jenkins-terraform-pipeline.png) |
+### Sprint 4 — Deploy to EKS
+![Pods running](docs/screenshots/sprint4-pods-running.png)
+![HPA with live CPU metrics](docs/screenshots/sprint4-hpa-metrics.png)
+![App reachable through the load balancer](docs/screenshots/sprint4-app-live.png)
+![Jenkins Deploy and smoke test](docs/screenshots/sprint4-jenkins-deploy.png)
 
-Full log: [docs/terraform.md](docs/terraform.md)
+### Sprint 5 — Monitoring and alerting
+![Prometheus targets](docs/screenshots/sprint5-prometheus-targets.png)
+![Grafana dashboard](docs/screenshots/sprint5-grafana-dashboard.png)
+![CapstoneAppDown alert firing](docs/screenshots/sprint5-alert-firing.png)
+![Jenkins Monitoring stage](docs/screenshots/sprint5-jenkins-monitoring.png)
+![Slack failure notification](docs/screenshots/sprint5-slack-alert.png)
 
-### 🔄 Sprint 3 — Ansible configuration management
+### Sprint 6 — Full pipeline
+![Complete pipeline run](docs/screenshots/sprint6-final-pipeline.png)
 
-Ansible playbooks configure the Jenkins EC2 host (Docker, kubectl, kubeconfig) and run automatically after the Terraform stages in the pipeline.
+Checklist of expected files: [docs/screenshots/README.md](docs/screenshots/README.md).
 
-Full log: [docs/ansible.md](docs/ansible.md)
+---
 
-### 🔲 Sprint 4 — CI/CD deploy to EKS
-### 🔲 Sprint 5 — Prometheus, Grafana, alerting
-### 🔲 Sprint 6 — Testing, documentation, production readiness
+## Step-by-step — run the project
 
-## Quickstart — running the app locally
+### Prerequisites
+
+- AWS account (EKS, ECR, VPC, S3, DynamoDB)
+- Jenkins on EC2 with **Pipeline from SCM**, script path `jenkins/Jenkinsfile`, branch `*/main`
+- ECR repository `devops-capstone-app` and Terraform S3 backend (see [terraform.md](docs/terraform.md))
+- Jenkins setup and access: [sprint-1.md](docs/sprint-1.md)
+
+### 1. Local app
 
 ```bash
 cd app
 docker build -t app:local .
 docker run -p 8080:8080 app:local
 curl http://localhost:8080/health
+pytest -q
 ```
 
-## Quickstart — infrastructure
+### 2. Full pipeline on Jenkins
+
+Push to `main` (or run job manually). Confirm all stages complete through **Pipeline validation**.
+
+Failure alert: Jenkins credential `slack-webhook-url` (Secret text) — [monitoring.md](docs/monitoring.md).
+
+### 3. Infrastructure
 
 ```bash
-cd terraform
-terraform init
-terraform plan
-terraform apply
+cd terraform && terraform init && terraform validate
+aws eks describe-cluster --name devops-capstone --region ap-south-1 --query cluster.status
+kubectl get nodes
 ```
 
-See [docs/terraform.md](docs/terraform.md) for variables, backend setup, and
-cost/destroy notes — the EKS cluster bills continuously while running, so it's
-recommended to `terraform destroy` between work sessions during development.
+Teardown when not in use: `terraform destroy` — [cost-optimization.md](docs/cost-optimization.md).
+
+### 4. Application on EKS
+
+```bash
+kubectl get deploy,svc,hpa -n capstone-app
+APP=$(kubectl get svc capstone-app -n capstone-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -sf "http://${APP}/health"
+curl -sf "http://${APP}/metrics" | head
+```
+
+Rollback: [pipeline.md](docs/pipeline.md).
+
+### 5. Monitoring
+
+```bash
+kubectl get pods -n monitoring
+kubectl port-forward svc/grafana -n monitoring 3000:80      # http://localhost:3000
+kubectl port-forward svc/prometheus -n monitoring 9090:9090  # http://localhost:9090/targets
+```
+
+Grafana (dev, port-forward only): `admin` / `capstone-dev` — dashboard **Capstone — App & Cluster**.  
+Prometheus targets should include app pods, kube-state-metrics, and node-exporter.
+
+Full checklist: [e2e-testing.md](docs/e2e-testing.md).
+
+### 6. Demo / viva
+
+[docs/demo-script.md](docs/demo-script.md) — 5–10 minute walkthrough of all five capstone stages.
+
+---
+
+## Documentation index
+
+| Topic | File |
+|-------|------|
+| Capstone requirements | [docs/task.md](docs/task.md) |
+| Architecture & IAM | [docs/architecture.md](docs/architecture.md) |
+| Jenkins & ECR setup | [docs/sprint-1.md](docs/sprint-1.md) |
+| Terraform & EKS | [docs/terraform.md](docs/terraform.md) |
+| Ansible | [docs/ansible.md](docs/ansible.md) |
+| Deploy pipeline | [docs/pipeline.md](docs/pipeline.md) |
+| Kubernetes manifests | [docs/kubernetes.md](docs/kubernetes.md) |
+| Monitoring & alerts | [docs/monitoring.md](docs/monitoring.md) |
+| Jenkins triggers | [docs/jenkins-triggers.md](docs/jenkins-triggers.md) |
+| End-to-end testing | [docs/e2e-testing.md](docs/e2e-testing.md) |
+| Cost optimization (10%) | [docs/cost-optimization.md](docs/cost-optimization.md) |
+| Production readiness | [docs/sprint-6.md](docs/sprint-6.md) |
+| Screenshot list | [docs/screenshots/README.md](docs/screenshots/README.md) |
+
+---
+
+## Deliverables (Project 4)
+
+- End-to-end Jenkins pipeline — build, Terraform, Ansible, deploy, test, monitoring
+- AWS infrastructure via Terraform — VPC, EKS, S3 state (Jenkins EC2 bootstrap documented in [terraform.md](docs/terraform.md))
+- Ansible configuration management in pipeline
+- Application on EKS with health checks and HPA
+- Prometheus, Grafana, and Prometheus alert rules
+- Documentation, cost guide, and demo script
+
+---
 
 ## Cost notes
 
-This project is optimized for a dev/demo budget, not production scale — single
-NAT gateway, small node instance types, and a destroy-between-sessions workflow
-for the EKS cluster. See the cost breakdown in
-[docs/terraform.md](docs/terraform.md#estimated-monthly-cost-if-left-running-continuously).
+Single NAT, `t3.medium` nodes, destroy EKS between study sessions. Details: [docs/cost-optimization.md](docs/cost-optimization.md).
 
-## Notable engineering decisions and lessons learned
+---
 
-A few real infrastructure problems came up during this build that are worth
-calling out (full details in each sprint's log):
+## Lessons learned
 
-- **IAM instance profiles over static credentials** — Jenkins never stores AWS
-  access keys; it inherits permissions entirely through the EC2 instance profile.
-- **Corporate network constraints** — direct SSH and HTTP to the Jenkins EC2
-  instance were blocked by a corporate proxy (Zscaler) doing deep packet
-  inspection. Worked around using AWS Systems Manager Session Manager (HTTPS-based
-  shell access) and SSM port forwarding, instead of opening the network up further.
-- **Caller permissions vs. service-role permissions** — discovered that
-  `AmazonEKSClusterPolicy`/`AmazonEKSServicePolicy` govern what the *cluster's own
-  role* can do, not what a caller (like Jenkins/Terraform) needs to manage the
-  cluster via the API — these are easy to conflate and the AWS documentation
-  doesn't make the distinction obvious.
+- **IAM instance profiles** — Jenkins uses EC2 role, not committed access keys
+- **SSM port-forward** — access Jenkins when corporate network blocks SSH/8080 ([sprint-1.md](docs/sprint-1.md))
+- **EKS IAM** — caller permissions differ from cluster service roles ([terraform.md](docs/terraform.md))
+- **metrics-server** — required on EKS for meaningful HPA CPU metrics ([pipeline.md](docs/pipeline.md))
 
-See [docs/sprint-1.md](docs/sprint-1.md) and [docs/terraform.md](docs/terraform.md)
-for the complete troubleshooting notes.
-
+More detail in each sprint log under `docs/`.
