@@ -1,5 +1,13 @@
-// Capstone stages: Build | Infra (Terraform) | Config (Ansible) | Deploy | Test & Monitor
-// Sprint 6: pollSCM trigger, Pipeline validation stage, docs in docs/sprint-6.md
+// Capstone stages:
+//   CI  -> Build (Test, Build image, Scan image, Push to ECR)
+//   CD  -> Infra (Terraform) | Config (Ansible) | Deploy | Test & Monitor
+// Changes after review:
+//   - Fail fast: test/build/scan run before any infrastructure change
+//   - Trivy image scan blocks CRITICAL vulnerabilities before push
+//   - terraform apply runs only when the plan has changes (-detailed-exitcode)
+//   - metrics-server pinned to a fixed release
+//   - AWS account ID derived at runtime (no hardcoded registry)
+//   - No concurrent builds; old Docker images pruned after every run
 
 pipeline {
     agent any
@@ -8,58 +16,37 @@ pipeline {
         pollSCM('H/15 * * * *')
     }
 
+    options {
+        disableConcurrentBuilds()
+    }
+
     environment {
-        AWS_REGION   = 'ap-south-1'
-        ECR_REPO     = 'devops-capstone-app'
-        ECR_REGISTRY = '562904760755.dkr.ecr.ap-south-1.amazonaws.com'
-        IMAGE_TAG    = "${env.BUILD_NUMBER}-${env.GIT_COMMIT?.take(7) ?: 'local'}"
+        AWS_REGION             = 'ap-south-1'
+        ECR_REPO               = 'devops-capstone-app'
+        IMAGE_TAG              = "${env.BUILD_NUMBER}-${env.GIT_COMMIT?.take(7) ?: 'local'}"
+        METRICS_SERVER_VERSION = 'v0.7.2'   // check https://github.com/kubernetes-sigs/metrics-server/releases
+        TRIVY_VERSION          = '0.58.1'   // check https://github.com/aquasecurity/trivy/releases
+        // ECR_REGISTRY is set in the Checkout stage. Do not define it here:
+        // values in this block cannot be overwritten later from a script.
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    def account = sh(
+                        script: 'aws sts get-caller-identity --query Account --output text',
+                        returnStdout: true
+                    ).trim()
+                    env.ECR_REGISTRY = "${account}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+                }
+                echo "Registry: ${env.ECR_REGISTRY}  Image tag: ${env.IMAGE_TAG}"
             }
         }
 
-        stage('Terraform Init') {
-            steps {
-                dir('terraform') {
-                    sh 'terraform init -input=false'
-                    sh 'terraform validate'
-                }
-            }
-        }
-
-        stage('Terraform Plan') {
-            steps {
-                dir('terraform') {
-                    sh 'terraform plan -input=false -out=tfplan'
-                }
-            }
-        }
-
-        stage('Terraform Apply') {
-            steps {
-                dir('terraform') {
-                    sh 'terraform apply -input=false -auto-approve tfplan'
-                }
-            }
-        }
-
-        stage('Ansible Configure') {
-            steps {
-                dir('ansible') {
-                    sh '''
-                        which ansible-playbook || sudo apt-get install -y ansible
-                        EKS_CLUSTER=$(cd ../terraform && terraform output -raw eks_cluster_name)
-                        ANSIBLE_ROLES_PATH=roles ansible-playbook site.yml \
-                            -e aws_region=${AWS_REGION} \
-                            -e eks_cluster_name="${EKS_CLUSTER}"
-                    '''
-                }
-            }
-        }
+        // ---------------- CI: fail fast before touching infrastructure ----------------
 
         stage('Test') {
             steps {
@@ -77,8 +64,25 @@ pipeline {
         stage('Build image') {
             steps {
                 dir('app') {
-                    sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} ."
+                    sh "docker build --pull -t ${ECR_REPO}:${IMAGE_TAG} ."
                 }
+            }
+        }
+
+        stage('Scan image') {
+            steps {
+                // Trivy runs as a container, so nothing extra is installed on the host.
+                // The vulnerability DB is cached between builds.
+                sh '''
+                    mkdir -p "$HOME/.cache/trivy"
+                    docker run --rm \
+                      -v /var/run/docker.sock:/var/run/docker.sock \
+                      -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+                      aquasec/trivy:${TRIVY_VERSION} image \
+                      --no-progress --ignore-unfixed \
+                      --severity CRITICAL --exit-code 1 \
+                      ${ECR_REPO}:${IMAGE_TAG}
+                '''
             }
         }
 
@@ -86,12 +90,67 @@ pipeline {
             steps {
                 sh """
                     aws ecr get-login-password --region ${AWS_REGION} \
-                        | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                    docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
-                    docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPO}:latest
-                    docker push ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
-                    docker push ${ECR_REGISTRY}/${ECR_REPO}:latest
+                      | docker login --username AWS --password-stdin ${env.ECR_REGISTRY}
+                    docker tag ${ECR_REPO}:${IMAGE_TAG} ${env.ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
+                    docker tag ${ECR_REPO}:${IMAGE_TAG} ${env.ECR_REGISTRY}/${ECR_REPO}:latest
+                    docker push ${env.ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
+                    docker push ${env.ECR_REGISTRY}/${ECR_REPO}:latest
                 """
+            }
+        }
+
+        // ---------------- CD: infrastructure, configuration, deployment ----------------
+
+        stage('Terraform Init') {
+            steps {
+                dir('terraform') {
+                    sh 'terraform init -input=false'
+                    sh 'terraform validate'
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                dir('terraform') {
+                    script {
+                        // 0 = no changes, 1 = error, 2 = changes present
+                        def rc = sh(
+                            script: 'terraform plan -input=false -out=tfplan -detailed-exitcode',
+                            returnStatus: true
+                        )
+                        if (rc == 1) {
+                            error 'Terraform plan failed'
+                        }
+                        env.TF_CHANGES = (rc == 2) ? 'true' : 'false'
+                        echo "Infrastructure changes detected: ${env.TF_CHANGES}"
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { env.TF_CHANGES == 'true' }
+            }
+            steps {
+                dir('terraform') {
+                    sh 'terraform apply -input=false -auto-approve tfplan'
+                }
+            }
+        }
+
+        stage('Ansible Configure') {
+            steps {
+                dir('ansible') {
+                    sh '''
+                        which ansible-playbook || sudo apt-get install -y ansible
+                        EKS_CLUSTER=$(cd ../terraform && terraform output -raw eks_cluster_name)
+                        ANSIBLE_ROLES_PATH=roles ansible-playbook site.yml \
+                          -e aws_region=${AWS_REGION} \
+                          -e eks_cluster_name="${EKS_CLUSTER}"
+                    '''
+                }
             }
         }
 
@@ -102,22 +161,19 @@ pipeline {
                 }
                 dir('kubernetes') {
                     sh '''
-                        # metrics-server is required for HPA and is NOT included by
-                        # default on EKS. Applying it here is idempotent — safe to
-                        # run on every deploy.
-                        kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+                        # metrics-server is required for HPA and is not included by default on EKS.
+                        # Pinned to a fixed release so every run installs the same version.
+                        kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/${METRICS_SERVER_VERSION}/components.yaml
 
                         kubectl apply -f namespace.yaml
                         kubectl apply -f deployment.yaml
                         kubectl apply -f service.yaml
                         kubectl apply -f hpa.yaml
 
-                        # Swap in the image just built and pushed, rather than
-                        # whatever tag is checked into deployment.yaml.
+                        # Deploy the image built and scanned in this run.
                         kubectl set image deployment/capstone-app \
-                            capstone-app=${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG} \
-                            -n capstone-app
-
+                          capstone-app=${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG} \
+                          -n capstone-app
                         kubectl rollout status deployment/capstone-app -n capstone-app --timeout=180s
                     '''
                 }
@@ -129,29 +185,29 @@ pipeline {
                 sh '''
                     SERVICE_HOST=""
                     for i in $(seq 1 20); do
-                        SERVICE_HOST=$(kubectl get svc capstone-app -n capstone-app \
-                            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-                        if [ -n "$SERVICE_HOST" ]; then break; fi
-                        echo "Waiting for LoadBalancer hostname... ($i/20)"
-                        sleep 15
+                      SERVICE_HOST=$(kubectl get svc capstone-app -n capstone-app \
+                        -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+                      if [ -n "$SERVICE_HOST" ]; then break; fi
+                      echo "Waiting for LoadBalancer hostname... ($i/20)"
+                      sleep 15
                     done
 
                     if [ -z "$SERVICE_HOST" ]; then
-                        echo "LoadBalancer hostname not assigned in time"
-                        exit 1
+                      echo "LoadBalancer hostname not assigned in time"
+                      exit 1
                     fi
-
                     echo "Service reachable at http://${SERVICE_HOST}"
-                    # A brand-new ELB's DNS name can take a few minutes to resolve
-                    # (curl exit code 6), so retry instead of one curl after a fixed sleep.
+
+                    # A new ELB's DNS name can take minutes to resolve (curl exit code 6), so retry.
                     sleep 30
                     for i in $(seq 1 12); do
-                        if curl -sf --max-time 10 "http://${SERVICE_HOST}/health"; then
-                            exit 0
-                        fi
-                        echo "Not reachable yet, retrying... ($i/12)"
-                        sleep 15
+                      if curl -sf --max-time 10 "http://${SERVICE_HOST}/health"; then
+                        exit 0
+                      fi
+                      echo "Not reachable yet, retrying... ($i/12)"
+                      sleep 15
                     done
+
                     echo "Smoke test failed: ${SERVICE_HOST} never became reachable"
                     exit 1
                 '''
@@ -170,6 +226,7 @@ pipeline {
                         kubectl apply -f prometheus.yaml
                         kubectl apply -f grafana-dashboards.yaml
                         kubectl apply -f grafana.yaml
+
                         kubectl rollout status deployment/kube-state-metrics -n monitoring --timeout=120s
                         kubectl rollout status deployment/prometheus -n monitoring --timeout=120s
                         kubectl rollout status deployment/grafana -n monitoring --timeout=120s
@@ -184,13 +241,13 @@ pipeline {
                     echo "=== capstone-app ==="
                     kubectl get deploy,svc,hpa -n capstone-app
                     kubectl wait --for=condition=available deployment/capstone-app \
-                        -n capstone-app --timeout=60s
+                      -n capstone-app --timeout=60s
 
                     echo "=== monitoring ==="
                     kubectl get deploy,pods -n monitoring
 
                     APP_HOST=$(kubectl get svc capstone-app -n capstone-app \
-                        -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                      -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
                     curl -sf --max-time 10 "http://${APP_HOST}/health"
                     curl -sf --max-time 10 "http://${APP_HOST}/metrics" | grep -q app_requests_total
                 '''
@@ -199,11 +256,15 @@ pipeline {
     }
 
     post {
+        always {
+            // Keep the Jenkins host's disk from filling up with old images.
+            sh 'docker image prune -af --filter "until=24h" || true'
+        }
         success {
-            echo "Deployed ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG} to EKS (monitoring stack applied)"
+            echo "Deployed ${env.ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG} to EKS (monitoring stack applied)"
         }
         failure {
-            echo "Pipeline failed — check stage logs, kubectl get pods -A, and Grafana/Prometheus in monitoring namespace"
+            echo "Pipeline failed: check stage logs, kubectl get pods -A, and Grafana/Prometheus in the monitoring namespace"
             script {
                 try {
                     withCredentials([string(credentialsId: 'slack-webhook-url', variable: 'SLACK_WEBHOOK_URL')]) {
