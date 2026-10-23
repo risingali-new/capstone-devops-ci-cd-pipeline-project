@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # ---- runtime stage: minimal image, no build tools ----
 FROM python:3.12-slim AS runtime
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 1000 appuser
 WORKDIR /app
 
