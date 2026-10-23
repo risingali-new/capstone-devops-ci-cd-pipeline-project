@@ -37,7 +37,7 @@ Network, IAM, and components: [docs/architecture.md](docs/architecture.md).
 | Terraform (VPC, subnets, EKS, S3 state) | `terraform/` + Jenkins Terraform stages | [terraform.md](docs/terraform.md) |
 | Ansible configuration | `ansible/` runs after Terraform | [ansible.md](docs/ansible.md) |
 | App on EKS (scale, resilience) | `kubernetes/` — probes, HPA | [kubernetes.md](docs/kubernetes.md) |
-| Jenkins CI/CD | [jenkins/Jenkinsfile](jenkins/Jenkinsfile) | [pipeline.md](docs/pipeline.md) |
+| Jenkins CI/CD | [jenkins/Jenkinsfile](jenkins/Jenkinsfile) | [pipeline.md](docs/pipeline.md), [jenkins.md](docs/jenkins.md) |
 | Prometheus & Grafana | `monitoring/` — app + node metrics | [monitoring.md](docs/monitoring.md) |
 
 ---
@@ -204,6 +204,7 @@ Full checklist: [e2e-testing.md](docs/e2e-testing.md).
 | Deploy pipeline | [docs/pipeline.md](docs/pipeline.md) |
 | Kubernetes manifests | [docs/kubernetes.md](docs/kubernetes.md) |
 | Monitoring & alerts | [docs/monitoring.md](docs/monitoring.md) |
+| Jenkins setup and troubleshooting | [docs/jenkins.md](docs/jenkins.md) |
 | Jenkins triggers | [docs/jenkins-triggers.md](docs/jenkins-triggers.md) |
 | End-to-end testing | [docs/e2e-testing.md](docs/e2e-testing.md) |
 | Cost optimization (10%) | [docs/cost-optimization.md](docs/cost-optimization.md) |
