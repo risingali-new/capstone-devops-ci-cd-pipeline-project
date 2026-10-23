@@ -53,7 +53,7 @@ variable "node_desired_size" {
 }
 
 variable "jenkins_role_arn" {
-  description = "IAM role ARN for the Jenkins EC2 instance (grants EKS API access)"
+  description = "Extra IAM role to grant EKS admin. Leave empty when Jenkins creates the cluster (EKS auto-grants the creator admin)."
   type        = string
-  default     = "arn:aws:iam::562904760755:role/jenkins-capstone-role"
+  default     = ""
 }
