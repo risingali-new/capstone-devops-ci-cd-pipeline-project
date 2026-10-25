@@ -34,9 +34,13 @@ flowchart TB
 
 ## Pipeline order
 
+Sprint 7 runs CI and image scan before Terraform (fail-fast, Trivy gate). See [sprint-7.md](sprint-7.md).
+
 ```mermaid
 flowchart LR
-  A["Checkout"] --> B["Terraform<br/>init, plan, apply"] --> C["Ansible<br/>configure host"] --> D["Test<br/>pytest"] --> E["Build image"] --> F["Push to ECR"] --> G["Deploy<br/>kubectl"] --> H["Smoke test"] --> I["Monitoring<br/>manifests"] --> V["Validation"]
+  A["Checkout"] --> T["Test"] --> B["Build"] --> S["Scan<br/>Trivy"] --> P["Push ECR"]
+  P --> TF["Terraform<br/>init, plan, apply"]
+  TF --> AN["Ansible"] --> D["Deploy"] --> H["Smoke test"] --> M["Monitoring"] --> V["Validation"]
 ```
 
 Details of each stage: [pipeline.md](pipeline.md) and [jenkins.md](jenkins.md).
