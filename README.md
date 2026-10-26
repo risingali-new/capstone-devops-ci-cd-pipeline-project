@@ -14,89 +14,6 @@ Automated pipeline for a Dockerized Flask app on **AWS EKS**, orchestrated by **
 
 ## Architecture
 
-<<<<<<< ours
-High-level diagram and IAM boundaries: **[docs/architecture.md](docs/architecture.md)** (Mermaid: GitHub → Jenkins → ECR / Terraform / EKS / monitoring).
-
----
-
-## Project goals (task mapping)
-
-| Goal | Delivery | Documentation |
-|------|----------|---------------|
-| Architecture (LB, orchestration, monitoring) | VPC, EKS, LoadBalancer Service, Prometheus/Grafana | [architecture.md](docs/architecture.md) |
-| Terraform (VPC, subnets, EKS, S3 state) | `terraform/` + Jenkins Terraform stages | [terraform.md](docs/terraform.md) |
-| Ansible configuration | `ansible/` after Terraform | [ansible.md](docs/ansible.md) |
-| App on EKS (scale, resilience) | `kubernetes/` — probes, HPA | [kubernetes.md](docs/kubernetes.md) |
-| Jenkins CI/CD | [jenkins/Jenkinsfile](jenkins/Jenkinsfile) | [pipeline.md](docs/pipeline.md), [jenkins.md](docs/jenkins.md) |
-| Prometheus & Grafana | `monitoring/` — app + node metrics | [monitoring.md](docs/monitoring.md) |
-
----
-
-## Jenkins pipeline (current)
-
-Declarative pipeline: [jenkins/Jenkinsfile](jenkins/Jenkinsfile). **Sprint 7** runs CI and image scan **before** Terraform so tests fail fast and vulnerable images never reach ECR. Details: [sprint-7.md](docs/sprint-7.md).
-
-| Capstone stage ([task.md](docs/task.md)) | Jenkins stages |
-|------------------------------------------|----------------|
-| **1. Build** | Test → Build image → **Scan image (Trivy)** → Push to ECR |
-| **2. Infrastructure** | Terraform Init → Plan → Apply *(only if plan has changes)* |
-| **3. Configuration** | Ansible Configure |
-| **4. Deployment** | Deploy → Post-deploy smoke test |
-| **5. Test & monitor** | Monitoring → Pipeline validation |
-
-**Trigger:** Git push or SCM poll (~15 min) — [jenkins-triggers.md](docs/jenkins-triggers.md).
-
-```
-Checkout → Test → Build → Scan → Push ECR → Terraform → Ansible → Deploy → Smoke → Monitoring → Validation
-```
-
----
-
-## Repository layout
-
-```
-app/           # Flask app, Dockerfile, pytest
-terraform/     # VPC, EKS, S3 backend, IAM
-ansible/       # Playbooks (Jenkins CI host)
-jenkins/       # Jenkinsfile
-kubernetes/    # Deployment, Service, HPA
-monitoring/    # Prometheus, Grafana, kube-state-metrics, node-exporter
-docs/          # Runbooks, sprint logs, screenshots
-```
-
----
-
-## Sprint summary
-
-| Sprint | Topic | Log |
-|--------|--------|-----|
-| 1 | Docker, ECR, Jenkins on EC2 | [sprint-1.md](docs/sprint-1.md) |
-| 2 | Terraform + remote state + Jenkins | [terraform.md](docs/terraform.md) |
-| 3 | Ansible after Terraform | [ansible.md](docs/ansible.md) |
-| 4 | Deploy to EKS (LB, HPA, smoke test) | [pipeline.md](docs/pipeline.md) |
-| 5 | Prometheus, Grafana, alerts | [monitoring.md](docs/monitoring.md) |
-| 6 | E2E tests, cost doc, demo script | [sprint-6.md](docs/sprint-6.md) |
-| 7 | Fail-fast CI, Trivy, conditional Terraform apply | [sprint-7.md](docs/sprint-7.md) |
-
----
-
-## Evidence screenshots
-
-### Sprint 1 — Docker, ECR, Jenkins
-
-![Jenkins dashboard](docs/screenshots/sprint1-jenkins-dashboard.png)
-![Jenkins console output](docs/screenshots/sprint1-jenkins-console.png)
-![ECR repository](docs/screenshots/sprint1-ecr-repo.png)
-![Jenkins EC2 instance](docs/screenshots/sprint1-ec2-instance.png)
-
-### Sprint 2 — Terraform (VPC + EKS)
-
-![kubectl get nodes](docs/screenshots/sprint2-kubectl-nodes.png)
-![EKS cluster](docs/screenshots/sprint2-eks-cluster.png)
-![VPC](docs/screenshots/sprint2-vpc.png)
-![terraform apply](docs/screenshots/sprint2-terraform-apply.png)
-![Jenkins pipeline with Terraform stages](docs/screenshots/sprint2-jenkins-terraform-pipeline.png)
-=======
 ```
 Developer --push--> GitHub --webhook/poll--> Jenkins (EC2)
                                                  |
@@ -158,7 +75,6 @@ kubernetes/    # Deployment, Service, HPA
 monitoring/    # Prometheus, Grafana, kube-state-metrics, node-exporter
 docs/          # Runbooks, sprint logs, task requirements
 ```
->>>>>>> theirs
 
 ### Sprint 3 — Ansible
 
