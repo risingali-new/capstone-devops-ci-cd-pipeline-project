@@ -19,7 +19,7 @@ The host is created by hand and is not part of `terraform destroy`, so builds, c
 2. **Install packages:**
    ```bash
    sudo apt update
-   sudo apt install -y fontconfig openjdk-21-jre docker.io python3-venv python3-pip
+   sudo apt install -y fontconfig openjdk-21-jre docker.io python3-venv python3-pip unzip
    ```
    Jenkins 2.5xx requires Java 21; Java 17 makes the service exit immediately.
 3. **Add the Jenkins apt repository** using the 2026 signing key. The older `jenkins.io-2023.key` has expired. On Ubuntu 22.04 (apt 2.4) the `signed-by` form failed even though the key was valid, so put the key in the trusted keys directory instead:
@@ -41,7 +41,12 @@ The host is created by hand and is not part of `terraform destroy`, so builds, c
    sudo visudo -c
    ```
 6. **Install Terraform** (HashiCorp apt repository or the zip from releases.hashicorp.com). Do not leave a HashiCorp apt source with an expired key on the host; it breaks Ansible's `apt` module (see troubleshooting).
-7. Docker, kubectl, AWS CLI v2 and jq are installed by the Ansible playbook on the first pipeline run. The pipeline installs Ansible itself if it is missing.
+7. **Install AWS CLI v2 before the first build.** The first stages (account lookup, ECR login) call `aws` before Ansible has run:
+   ```bash
+   curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+   unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install
+   ```
+   kubectl and jq are installed by the Ansible playbook on the first run, and the pipeline installs Ansible itself if it is missing. Image scanning uses the `aquasec/trivy` container, so nothing extra is installed for it.
 8. **Unlock Jenkins** (initial admin password in `/var/lib/jenkins/secrets/initialAdminPassword`) and install the suggested plugins.
 
 ## Reaching the Jenkins UI
@@ -87,9 +92,9 @@ AWS access uses the instance profile, so there are no AWS keys in Jenkins. Never
 
 ## Day-to-day use
 
-1. `terraform apply` from your laptop to create the cluster, then `aws eks update-kubeconfig --name devops-capstone --region ap-south-1`.
-2. Start the Jenkins instance, wait for it to pass its status checks, open the SSM port-forward and log in.
-3. **Build Now**, or push a commit and wait for the poll.
+1. Start the Jenkins instance, wait for it to pass its status checks, open the SSM port-forward and log in.
+2. **Build Now**, or push a commit and wait for the poll. The first build creates the cluster (about 15 minutes). Jenkins is the cluster creator, so EKS gives its role admin automatically.
+3. To use `kubectl` from your laptop, give your IAM principal an access entry once (commands in step 3 of the [README](../README.md#3-infrastructure)), then run `aws eks update-kubeconfig --name devops-capstone --region ap-south-1`. If you create the cluster from a laptop instead, apply with `-var jenkins_role_arn=<Jenkins role ARN>` so Jenkins gets access too.
 4. When finished: disable the job, delete the app's load balancer Service, `terraform destroy`, and stop the instance. Full order and checks are in [cost-optimization.md](cost-optimization.md).
 
 Rollback of a bad deploy: `kubectl rollout undo deployment/capstone-app -n capstone-app`.
@@ -108,10 +113,15 @@ Rollback of a bad deploy: `kubectl rollout undo deployment/capstone-app -n capst
 | Smoke test fails with `curl` exit code 6 | A brand-new load balancer's DNS name has not propagated yet | The smoke test retries for about 5 minutes; if it still fails, check the Service with `kubectl get svc -n capstone-app` |
 | Red `git ls-remote` warning on the job's configure page | Transient check from the page, not the real checkout | Verify on the host: `sudo -u jenkins git ls-remote <repo-url> refs/heads/main` |
 | UI hangs although the tunnel prints "Connection accepted" | Stale SSM port-forward session | Stop the old `session-manager-plugin` process (`lsof -i :8080`) and start a fresh tunnel |
-| `kubectl` says `You must be logged in to the server` or `Forbidden` after recreating the cluster | Access entries belong to a cluster, and new ones take 30 to 60 seconds to apply | Wait and retry. The creator gets admin through `bootstrap_cluster_creator_admin_permissions = true`; Jenkins gets its entry from Terraform. |
+| `kubectl` says `You must be logged in to the server` or `Forbidden` after recreating the cluster | Access entries belong to a cluster, and new ones take 30 to 60 seconds to apply | Wait and retry. The creator (Jenkins by default) gets admin through `bootstrap_cluster_creator_admin_permissions = true`. Anyone else needs an access entry, and `jenkins_role_arn` must be passed when someone other than Jenkins creates the cluster. |
 | `403` / `AccessDenied` right after attaching an IAM policy | IAM changes take 30 to 60 seconds to reach an instance's credentials | Retry after a minute |
 | `terraform destroy` fails with `DependencyViolation` on subnets or the VPC | The app's load balancer (created by Kubernetes, not Terraform) and its `k8s-elb-*` security group still exist | Delete the `LoadBalancer` Services first, wait until the ELB is gone, then destroy |
 | A cluster appeared again after you destroyed it | `pollSCM` started a build whose Terraform stage recreated it | Disable the job while the cluster is down |
+| `terraform apply` fails with `409 ResourceInUseException` on an access entry | The cluster creator already has an automatic access entry, and Terraform tried to create a second one for the same principal | Leave `jenkins_role_arn` empty when Jenkins creates the cluster ([sprint-7.md](sprint-7.md)) |
+| `ResourceInUseException: Cluster already exists` | An aborted apply left a cluster that Terraform never recorded in state | `terraform import module.eks.aws_eks_cluster.main devops-capstone`, then plan. Never abort a build during Terraform Apply. |
+| `Scan image` fails with CRITICAL vulnerabilities | A fixable CVE in the base image, usually from a stale cached layer | The build already uses `docker build --pull` and `apt-get upgrade`; rebuild ([sprint-7.md](sprint-7.md)) |
+| `Scan image` fails with `x509: certificate signed by unknown authority` | The network does TLS inspection and blocks the scanner's database download | Run it where the pipeline runs (the Jenkins EC2 host), not behind the inspecting proxy. The stage fails closed, so nothing unscanned is pushed. |
+| First stage fails with `aws: command not found` on a new host | AWS CLI v2 must exist before the first build because the early stages call it before Ansible runs | Step 7 of the host setup |
 
 ## Security notes
 

@@ -35,6 +35,7 @@ changing for a different environment:
 | `aws_region` | `ap-south-1` | Keep consistent across all resources |
 | `node_instance_type` | `t3.medium` | Balance of cost vs capacity for a demo cluster |
 | `node_min_size` / `node_max_size` | 1 / 3 | HPA-friendly range without runaway cost |
+| `jenkins_role_arn` | `""` | Leave empty when Jenkins creates the cluster: EKS already gives the creator admin, and a second access entry for the same role fails. Set it to the Jenkins role ARN when someone else (for example a laptop) creates the cluster, so Terraform adds the entry. |
 
 ## Running it
 
@@ -46,8 +47,9 @@ terraform plan       # shows what would change
 terraform apply      # actually creates/updates infra
 ```
 
-Also runs automatically from Jenkins (`jenkins/Jenkinsfile`, stages: Terraform Init →
-Plan → Apply), using the EC2 instance's IAM role — no stored AWS credentials in Jenkins.
+Also runs automatically from Jenkins (`jenkins/Jenkinsfile`, stages: Terraform Init (with
+`terraform validate`) → Plan → Apply, where Apply runs only when the plan reports changes),
+using the EC2 instance's IAM role — no stored AWS credentials in Jenkins.
 
 ## Destroy / rollback
 

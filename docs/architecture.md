@@ -43,7 +43,7 @@ flowchart LR
   TF --> AN["Ansible"] --> D["Deploy"] --> H["Smoke test"] --> M["Monitoring"] --> V["Validation"]
 ```
 
-Details of each stage: [pipeline.md](pipeline.md) and [jenkins.md](jenkins.md).
+CI stages run first, so a failing test or a CRITICAL vulnerability stops the run before Terraform. Terraform applies only when the plan reports changes. Details: [pipeline.md](pipeline.md), [sprint-7.md](sprint-7.md) and [jenkins.md](jenkins.md).
 
 ## Who provisions what
 
@@ -53,7 +53,7 @@ Details of each stage: [pipeline.md](pipeline.md) and [jenkins.md](jenkins.md).
 | ECR repository `devops-capstone-app` | Manual (AWS CLI, Sprint 1) | Images tagged `<build>-<commit>` plus `latest`. |
 | S3 state bucket and DynamoDB lock table | Manual bootstrap (Sprint 2) | Terraform cannot create the backend it stores its own state in. |
 | VPC, subnets, internet gateway, NAT gateway, route tables | Terraform | `terraform/modules/vpc` |
-| EKS cluster, managed node group, cluster and node IAM roles, Jenkins access entry | Terraform | `terraform/modules/eks` |
+| EKS cluster, managed node group, cluster and node IAM roles | Terraform | `terraform/modules/eks`. Jenkins creates the cluster, so EKS gives its role admin as creator; an explicit Jenkins access entry exists only when `jenkins_role_arn` is set. |
 | Host tooling on Jenkins (Docker, kubectl, AWS CLI v2, jq, docker group) | Ansible | `ansible/`, runs on the Jenkins host itself ([ansible.md](ansible.md)) |
 | App Deployment, Service, HPA, metrics-server | Jenkins (`kubectl apply`) | `kubernetes/` ([kubernetes.md](kubernetes.md)) |
 | Prometheus, Grafana, kube-state-metrics, node-exporter | Jenkins (`kubectl apply`) | Raw manifests in `monitoring/` ([monitoring.md](monitoring.md)) |
@@ -79,10 +79,10 @@ Details of each stage: [pipeline.md](pipeline.md) and [jenkins.md](jenkins.md).
 | Identity | What it can do |
 |---|---|
 | Jenkins instance role `jenkins-capstone-role` | Managed policies: `AmazonEC2ContainerRegistryFullAccess`, `AmazonSSMManagedInstanceCore`, `AmazonEC2FullAccess`, `AmazonVPCFullAccess`, `IAMFullAccess`, `AmazonS3FullAccess`, `AmazonDynamoDBFullAccess`, `AmazonEKSClusterPolicy`, `AmazonEKSServicePolicy`, plus the inline policy `eks-caller-access` (`eks:*`). |
-| Jenkins inside the cluster | EKS access entry with `AmazonEKSClusterAdminPolicy` (Terraform-managed). |
+| Jenkins inside the cluster | Cluster admin as the cluster creator (automatic access entry). If someone else creates the cluster, `jenkins_role_arn` makes Terraform add an access entry with `AmazonEKSClusterAdminPolicy`. |
 | EKS cluster role | `AmazonEKSClusterPolicy` |
 | EKS node role | `AmazonEKSWorkerNodePolicy`, `AmazonEKS_CNI_Policy`, `AmazonEC2ContainerRegistryReadOnly` (pulls images from ECR). |
-| Cluster creator (whoever runs `terraform apply`) | Cluster admin through `bootstrap_cluster_creator_admin_permissions = true`. |
+| Cluster creator (Jenkins by default; anyone who runs `terraform apply`) | Cluster admin through `bootstrap_cluster_creator_admin_permissions = true`. Other people, such as your laptop user, need their own access entry. |
 
 These Jenkins permissions are deliberately broad for a single-user dev project. In production they would be split into a narrowly scoped Terraform execution role and a smaller CI role.
 `AmazonEKSClusterPolicy` and `AmazonEKSServicePolicy` on the Jenkins role do nothing useful for a caller; they belong to the cluster's own role. `eks-caller-access` is what lets Jenkins call the EKS API.
@@ -90,6 +90,7 @@ These Jenkins permissions are deliberately broad for a single-user dev project. 
 ## Security notes
 
 - No secrets in the repository. The Slack webhook is a Jenkins credential; AWS access comes from the instance profile, not stored keys.
+- Images are scanned with Trivy before they are pushed; fixable CRITICAL vulnerabilities fail the build.
 - Worker nodes have no public IPs.
 - Grafana is a `ClusterIP` service reached with `kubectl port-forward`. Its dev password is in the manifest, so it is never exposed publicly.
 - The `jenkins` OS user has passwordless sudo so Ansible can configure the host. Anything running in a pipeline therefore has root on the Jenkins host.

@@ -2,6 +2,8 @@
 
 > Implementation roadmap for Project 4. Requirements source of truth: [task.md](task.md). Sprint checklists: [.cursor/skills/aws-devops-capstone/reference.md](../.cursor/skills/aws-devops-capstone/reference.md).
 
+> **Historical planning document.** This is the roadmap written before implementation started. The "Current state" and "Immediate next steps" sections below describe the starting point, not the finished project. For the final state see [README.md](../README.md) and [architecture.md](architecture.md).
+
 ## Current state
 
 The repository is **greenfield**: only requirements and scaffolding exist today.

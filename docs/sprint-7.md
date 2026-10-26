@@ -52,7 +52,7 @@ With `bootstrap_cluster_creator_admin_permissions = true`, EKS automatically giv
 | ![](screenshots/sprint7-terraform-apply-skipped.png) | Plan reports no changes, Terraform Apply skipped |
 | ![](screenshots/sprint7-fail-fast.png) | Failing test stops the pipeline before any Terraform stage |
 | ![](screenshots/sprint7-slack-fail-fast.png) | Slack alert for the failed build |
-| ![](screenshots/sprint7-terraform-import.png) | Orphaned cluster imported into state |
+| ![](screenshots/sprint7-terraform-import.png) | Jenkins access entry imported into state; the follow-up plan shows 1 to add, 1 to change |
 | ![](screenshots/sprint7-app-health.png) | `/health` reachable through the load balancer |
 | ![](screenshots/sprint7-metrics-server-pinned.png) | metrics-server running the pinned `v0.7.2` image |
 

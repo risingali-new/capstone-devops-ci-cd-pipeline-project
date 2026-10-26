@@ -102,13 +102,10 @@ that verification step mattered before merging.
    `API`) was chosen to stay backward-compatible with any existing
    `aws-auth` ConfigMap approach.
 
-   **Follow-up not yet addressed:** the cluster creator (whoever runs
-   `terraform apply`) isn't automatically granted cluster-admin access unless
-   `bootstrap_cluster_creator_admin_permissions = true` is also set inside
-   `access_config`. This wasn't blocking (the applying user got a manual
-   access entry via AWS CLI during testing), but should be added so a new
-   teammate running `apply` for the first time isn't locked out of their own
-   cluster.
+   **Addressed later:** `bootstrap_cluster_creator_admin_permissions = true` is
+   now set inside `access_config`, so whoever creates the cluster gets admin
+   automatically. In Sprint 7 this also made the explicit Jenkins access entry
+   optional, because Jenkins is the creator (see [sprint-7.md](sprint-7.md)).
 
 2. **The `jenkins` system user had no sudo access.** The Ansible playbook
    (via the Jenkinsfile's `Ansible Configure` stage) needs root to install

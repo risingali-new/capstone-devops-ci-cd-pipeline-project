@@ -14,7 +14,7 @@ Walk through the **five capstone pipeline stages** mapped to this repository’s
 **Show:**
 
 - `app/Dockerfile` — non-root user, `/health`
-- Jenkins stages: **Test**, **Build image**, **Push to ECR**
+- Jenkins stages: **Test**, **Build image**, **Scan image** (Trivy), **Push to ECR**. These run first, so a failing test or a CRITICAL vulnerability stops the run before any infrastructure is touched.
 - ECR console or `aws ecr describe-images`
 
 ## 2. Infrastructure provisioning (1–2 min)
@@ -24,7 +24,7 @@ Walk through the **five capstone pipeline stages** mapped to this repository’s
 **Show:**
 
 - `terraform/modules/vpc`, `terraform/modules/eks`
-- Jenkins: **Terraform Init / Plan / Apply**
+- Jenkins: **Terraform Init / Plan / Apply** (apply runs only when the plan has changes)
 - `docs/terraform.md` — cost and destroy notes
 
 ## 3. Configuration management (1 min)
@@ -66,4 +66,5 @@ Walk through the **five capstone pipeline stages** mapped to this repository’s
 
 - **Terraform vs Ansible?** Terraform creates AWS/EKS; Ansible configures the CI server.
 - **Why metrics-server?** Default EKS lacks it; HPA needs real CPU metrics.
-- **How does Jenkins access EKS?** Instance role + EKS access entries + kubeconfig for `jenkins` user.
+- **How does Jenkins access EKS?** Instance role + admin access as the cluster creator (an explicit access entry via `jenkins_role_arn` if someone else creates the cluster) + kubeconfig for the `jenkins` user.
+- **Why scan and test before Terraform?** Fail fast: a bad commit is rejected in seconds and never changes infrastructure ([sprint-7.md](sprint-7.md)).

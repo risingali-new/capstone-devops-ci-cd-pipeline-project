@@ -11,7 +11,7 @@ This project targets a **dev/demo** budget, not production HA. Choices below kee
 | Jenkins | One `t3.medium` EC2 (Sprint 1) | Managed CI (CodePipeline, etc.) |
 | LoadBalancers | App LB only; Grafana is ClusterIP (port-forward) | Ingress + single ALB |
 | State | S3 + DynamoDB lock (minimal objects) | Same pattern, often shared bucket |
-| Pipeline | Full Terraform on every run (simple, but a poll-triggered build can recreate a destroyed cluster, so disable the job while the cluster is down) | Separate infra job, or a guard that aborts when the cluster does not exist |
+| Pipeline | Terraform plan on every run, apply only when the plan has changes (a poll-triggered build can still recreate a destroyed cluster, so disable the job while the cluster is down) | Separate infra job, or a guard that aborts when the cluster does not exist |
 
 ## Rough monthly cost (`ap-south-1`, everything running)
 

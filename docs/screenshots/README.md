@@ -36,4 +36,15 @@ PNG captures referenced by [README.md](../../README.md). Keep these exact filena
 ## Sprint 6
 - `sprint6-final-pipeline.png` — one complete green pipeline run (Stage View)
 
+## Sprint 7
+- `sprint7-pipeline-stage-order.png` — full run with the new stage order
+- `sprint7-trivy-scan-failed.png` — scan gate blocking 3 CRITICAL vulnerabilities
+- `sprint7-trivy-scan-passed.png` — rescan after `--pull`: `Total: 0`
+- `sprint7-terraform-apply-skipped.png` — no infrastructure changes, Terraform Apply skipped
+- `sprint7-fail-fast.png` — failing test stops the pipeline before Terraform
+- `sprint7-slack-fail-fast.png` — Slack alerts for failed builds
+- `sprint7-terraform-import.png` — Jenkins access entry imported into state
+- `sprint7-app-health.png` — `/health` through the load balancer
+- `sprint7-metrics-server-pinned.png` — metrics-server on the pinned `v0.7.2` image
+
 Do not commit secrets in screenshots (webhook URLs, tokens). Crop them out first.
